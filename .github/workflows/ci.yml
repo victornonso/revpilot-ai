@@ -49,7 +49,7 @@ jobs:
         working-directory: apps/web
       - name: Start application
         run: |
-          uv run uvicorn apps.api.main:app --host 127.0.0.1 --port 8010 > /tmp/api.log 2>&1 &
+          .venv/bin/uvicorn apps.api.main:app --host 127.0.0.1 --port 8010 > /tmp/api.log 2>&1 &
           cd apps/web
           npm run start > /tmp/web.log 2>&1 &
           for i in $(seq 1 60); do curl -fsS http://127.0.0.1:3010/overview > /dev/null && break; sleep 2; done
