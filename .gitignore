@@ -21,3 +21,5 @@ analytics/dbt/logs/
 
 mlruns/
 mlartifacts/
+
+analytics/dbt/.user.yml

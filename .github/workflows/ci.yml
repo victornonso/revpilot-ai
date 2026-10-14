@@ -15,7 +15,9 @@ jobs:
           POSTGRES_PASSWORD: ci-admin-fixture
           POSTGRES_DB: revpilot_db
         ports: ['5432:5432']
-        options: --health-cmd 'pg_isready -U revpilot_admin -d revpilot_db' --health-interval 5s --health-retries 20
+        options: >-
+          --health-cmd "pg_isready -U revpilot_admin -d revpilot_db"
+          --health-interval 5s --health-retries 20
     env:
       MIGRATION_DATABASE_URL: postgresql+psycopg://revpilot_admin:ci-admin-fixture@127.0.0.1:5432/revpilot_db
       DATABASE_URL: postgresql+psycopg://revpilot_app:ci-app-fixture@127.0.0.1:5432/revpilot_db
