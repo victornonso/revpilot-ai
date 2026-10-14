@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
-from apps.api.db import DEMO_ORG, session
+from apps.api.db import DEMO_ORG, session, settings
 from apps.api.main import app
 from services.ai_analyst.orchestration import execute
 from services.ingestion.connectors import (
@@ -217,7 +217,8 @@ def test_tools_cannot_run_arbitrary_sql():
         execute("execute_sql", {"sql": "SELECT * FROM identity.user"})
 
 
-def test_unconfigured_ai_does_not_fake_an_answer():
+def test_unconfigured_ai_does_not_fake_an_answer(monkeypatch):
+    monkeypatch.setattr(settings, "llm_api_key", "")
     assert (
         client.post(
             "/api/v1/investigations", json={"question": "Why did revenue change?"}

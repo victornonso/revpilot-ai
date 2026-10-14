@@ -23,8 +23,8 @@ implemented local system under active development, not a completed production re
 | Complete production ML services | In progress | Bookings/recurring forecasts, live scoring, drift, lift and rollback remain |
 | MLflow tracking | Tested | Local tracking runs, evaluation reports and artefacts |
 | AI analytical tool loop | Implemented | Ten governed tools, audit/evidence persistence, bounded provider rounds |
-| Gemini connection | Awaiting credentials | Local free-tier configuration prepared; no key configured |
-| Live provider answer quality | Unverified | No fabricated responses used |
+| Gemini connection | Tested locally | Gemini 3.8 Flash authenticated; server-only key in ignored configuration |
+| Live provider answer quality | Initial verification passed | Actual metric definition/query tool calls returned persisted evidence IDs and reconciled invoiced revenue; broader testing remains |
 | OIDC bearer authentication / memberships | Implemented | JWT verification and database membership; browser login still missing |
 | Full tenant governance | In progress | Typed operational relationship constraints, per-owner policies and retention remain |
 | CSV/PDF report generation | Tested | Actual persisted metric snapshots and downloads |
@@ -45,8 +45,8 @@ implemented local system under active development, not a completed production re
   forecasts, explanation/capacity evaluation, drift monitoring and rollback.
 - Complete eight distinct automation triggers, versions/edits, cancellation,
   per-tenant worker dispatch, external adapters and measured intervention outcomes.
-- Connect an authorised LLM key, verify actual provider tool calling and expand
-  structured-answer/adversarial testing; respect the selected provider's terms.
+- Expand provider structured-answer/adversarial testing and quota/error handling;
+  respect the selected provider's terms.
 - Complete analytical-view saving, scheduled report generation/delivery and audit.
 - Verify complete Docker startup, CI browser results, backups and monitoring.
 - Deploy only once application acceptance and suitable infrastructure are verified.

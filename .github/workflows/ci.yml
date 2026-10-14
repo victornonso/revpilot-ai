@@ -63,4 +63,6 @@ jobs:
             apps/web/test-results
             apps/web/playwright-report
       - run: docker build -f infrastructure/docker/api.Dockerfile -t revpilot-api .
+      - name: Verify API container runtime dependencies
+        run: docker run --rm revpilot-api python -c "import fastapi, lightgbm, psycopg"
       - run: docker build -t revpilot-web apps/web
