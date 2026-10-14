@@ -1,0 +1,76 @@
+name: revpilot
+x-api-environment: &api-environment
+  DATABASE_URL: postgresql+psycopg://revpilot_app:${APP_DATABASE_PASSWORD:?Run bootstrap first}@postgres:5432/revpilot_db
+  MIGRATION_DATABASE_URL: postgresql+psycopg://revpilot_admin:${POSTGRES_PASSWORD:?Run bootstrap first}@postgres:5432/revpilot_db
+  SESSION_SECRET: ${SESSION_SECRET:?Set a random session secret}
+  APP_ORIGIN: http://127.0.0.1:3010
+  DEMO_MODE: 'true'
+  TEMPORAL_ADDRESS: temporal:7233
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_DB: revpilot_db
+      POSTGRES_USER: revpilot_admin
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      APP_DATABASE_PASSWORD: ${APP_DATABASE_PASSWORD}
+    volumes:
+      - database:/var/lib/postgresql
+      - ./infrastructure/docker/init.sql:/docker-entrypoint-initdb.d/01-roles.sql:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U revpilot_admin -d revpilot_db']
+      interval: 5s
+      retries: 20
+    ports: ['127.0.0.1:5545:5432']
+  bootstrap:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/api.Dockerfile
+    environment: *api-environment
+    depends_on:
+      postgres: {condition: service_healthy}
+    command: ['sh','-c','alembic upgrade head && python -m demo.generator.seed && python -m tools.build_marts && python -m services.intelligence.train']
+    volumes: [models:/app/.local]
+  temporal:
+    image: temporalio/auto-setup:1.29.4
+    environment:
+      DB: postgres12
+      DB_PORT: 5432
+      POSTGRES_USER: revpilot_admin
+      POSTGRES_PWD: ${POSTGRES_PASSWORD}
+      POSTGRES_SEEDS: postgres
+    depends_on:
+      postgres: {condition: service_healthy}
+  api:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/api.Dockerfile
+    environment: *api-environment
+    depends_on:
+      bootstrap: {condition: service_completed_successfully}
+    ports: ['127.0.0.1:8010:8010']
+    healthcheck:
+      test: ['CMD','python','-c',"import urllib.request; urllib.request.urlopen('http://localhost:8010/health')"]
+      interval: 10s
+      retries: 10
+    volumes: [models:/app/.local]
+  worker:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/api.Dockerfile
+    environment: *api-environment
+    depends_on:
+      bootstrap: {condition: service_completed_successfully}
+      temporal: {condition: service_started}
+    command: ['python','-m','apps.worker.main']
+    restart: on-failure
+  web:
+    build: apps/web
+    environment:
+      API_INTERNAL_URL: http://api:8010
+    ports: ['127.0.0.1:3010:3010']
+    depends_on:
+      api: {condition: service_healthy}
+volumes:
+  database:
+  models:

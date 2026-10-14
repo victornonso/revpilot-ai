@@ -1,0 +1,4 @@
+\getenv app_password APP_DATABASE_PASSWORD
+CREATE ROLE revpilot_app LOGIN PASSWORD :'app_password' NOSUPERUSER NOCREATEDB NOCREATEROLE;
+CREATE DATABASE temporal;
+CREATE DATABASE temporal_visibility;

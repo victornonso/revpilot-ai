@@ -1,0 +1,64 @@
+name: RevPilot verification
+on:
+  push: {branches: [main]}
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  platform:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: revpilot_admin
+          POSTGRES_PASSWORD: ci-admin-fixture
+          POSTGRES_DB: revpilot_db
+        ports: ['5432:5432']
+        options: --health-cmd 'pg_isready -U revpilot_admin -d revpilot_db' --health-interval 5s --health-retries 20
+    env:
+      MIGRATION_DATABASE_URL: postgresql+psycopg://revpilot_admin:ci-admin-fixture@127.0.0.1:5432/revpilot_db
+      DATABASE_URL: postgresql+psycopg://revpilot_app:ci-app-fixture@127.0.0.1:5432/revpilot_db
+      SESSION_SECRET: ci-only-session-fixture-not-a-production-credential
+      APP_ORIGIN: http://127.0.0.1:3010
+      DEMO_MODE: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-node@v4
+        with: {node-version: '24',cache: npm,cache-dependency-path: apps/web/package-lock.json}
+      - run: uv sync --frozen
+      - name: Create least-privilege application role
+        env: {PGPASSWORD: ci-admin-fixture}
+        run: psql -h 127.0.0.1 -U revpilot_admin -d revpilot_db -v ON_ERROR_STOP=1 -c "CREATE ROLE revpilot_app LOGIN PASSWORD 'ci-app-fixture' NOSUPERUSER NOCREATEDB NOCREATEROLE"
+      - run: uv run alembic upgrade head
+      - run: uv run python -m demo.generator.seed
+      - run: uv run python -m tools.build_marts
+      - run: uv run ruff check apps services db demo tools tests
+      - run: uv run pytest -q
+      - run: uv run python -m services.intelligence.train
+      - run: npm ci
+        working-directory: apps/web
+      - run: npm run build
+        working-directory: apps/web
+      - run: npm run typecheck
+        working-directory: apps/web
+      - run: npx playwright install --with-deps chromium
+        working-directory: apps/web
+      - name: Start application
+        run: |
+          uv run uvicorn apps.api.main:app --host 127.0.0.1 --port 8010 > /tmp/api.log 2>&1 &
+          cd apps/web
+          npm run start > /tmp/web.log 2>&1 &
+          for i in $(seq 1 60); do curl -fsS http://127.0.0.1:3010/overview > /dev/null && break; sleep 2; done
+      - run: npm test
+        working-directory: apps/web
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: responsive-browser-verification
+          path: |
+            apps/web/test-results
+            apps/web/playwright-report
+      - run: docker build -f infrastructure/docker/api.Dockerfile -t revpilot-api .
+      - run: docker build -t revpilot-web apps/web

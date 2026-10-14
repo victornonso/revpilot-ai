@@ -1,0 +1,20 @@
+version: 2
+models:
+  - name: monthly_revenue
+    columns:
+      - name: org_id
+        data_tests: [not_null]
+      - name: invoiced_revenue
+        data_tests: [not_null]
+  - name: revenue_growth
+    columns:
+      - name: org_id
+        data_tests: [not_null]
+  - name: rep_performance
+    columns:
+      - name: owner_id
+        data_tests: [not_null]
+  - name: subscription_cohorts
+    columns:
+      - name: cohort
+        data_tests: [not_null]
