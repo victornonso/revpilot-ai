@@ -74,7 +74,7 @@ test("invalid reporting period offers a recoverable error", async ({
   page,
 }) => {
   await page.goto("/overview?start=2026-10-14&end=2026-01-01");
-  await expect(page.getByRole("alert")).toContainText(
+  await expect(page.locator(".error-state")).toContainText(
     "Choose an ordered reporting period",
   );
   await expect(
