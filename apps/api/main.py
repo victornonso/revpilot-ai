@@ -461,16 +461,78 @@ async def investigate(body: Investigation):
             503,
             "Configure an LLM provider and model to run evidence-grounded investigations. BI, reports and workflows remain available.",
         )
-    from services.ai_analyst.orchestration import investigate as run
+    from services.ai_analyst.orchestration import (
+        ProviderUnavailableError,
+    )
+    from services.ai_analyst.orchestration import (
+        investigate as run,
+    )
 
     try:
         return await run(body.question)
+    except ProviderUnavailableError as exc:
+        raise HTTPException(
+            429 if exc.code == "rate_limited" else 503,
+            str(exc),
+            headers={"Retry-After": str(exc.retry_seconds)},
+        ) from exc
+    except TimeoutError as exc:
+        raise HTTPException(
+            503,
+            "The AI provider took too long to complete this investigation. Please try a narrower question.",
+        ) from exc
     except Exception as exc:
         log.exception("investigation_failed")
         raise HTTPException(
             502,
             "The provider investigation did not complete. No unapproved external action was executed.",
         ) from exc
+
+
+@app.get("/api/v1/investigations/{conversation_id}")
+def saved_investigation(conversation_id: UUID):
+    with session() as conn:
+        conversations = rows(
+            conn,
+            "SELECT id,status,payload,created_at FROM ai.conversation WHERE id=:id",
+            {"id": conversation_id},
+        )
+        if not conversations:
+            raise HTTPException(404, "Investigation not found.")
+        messages = rows(
+            conn,
+            "SELECT payload FROM ai.message WHERE payload->>'conversation_id'=:id ORDER BY created_at",
+            {"id": str(conversation_id)},
+        )
+        evidence = rows(
+            conn,
+            "SELECT id,payload FROM ai.evidence_reference WHERE payload->>'conversation_id'=:id ORDER BY created_at",
+            {"id": str(conversation_id)},
+        )
+    conversation = conversations[0]
+    answers = [
+        m["payload"]["content"]
+        for m in messages
+        if m["payload"].get("role") == "assistant"
+    ]
+    return {
+        "conversation_id": conversation_id,
+        "status": conversation["status"],
+        "answer": answers[-1]
+        if answers
+        else conversation["payload"].get(
+            "failure_message", "This investigation has not completed."
+        ),
+        "evidence": [
+            {
+                "id": str(e["id"]),
+                "tool": e["payload"].get("tool"),
+                "data": e["payload"].get("result"),
+            }
+            for e in evidence
+        ],
+        "meta": conversation["payload"],
+    }
 
 
 class Report(BaseModel):

@@ -2155,6 +2155,27 @@ small {
   border-top: 1px solid var(--line);
   padding-top: 20px;
 }
+.saved-investigations {
+  max-height: 280px;
+  overflow-y: auto;
+  margin: 16px 0;
+}
+.saved-investigations button {
+  display: block;
+  width: 100%;
+  padding: 12px 4px;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.saved-investigations small {
+  display: block;
+  color: var(--muted);
+  font-size: 10px;
+  margin-top: 4px;
+}
 .analytical-answer > p {
   white-space: pre-wrap;
   font-size: 12px;

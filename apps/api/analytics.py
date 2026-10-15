@@ -589,7 +589,7 @@ def dashboard(
         )
         result["conversations"] = query(
             conn,
-            "SELECT id,payload,created_at FROM ai.conversation ORDER BY created_at DESC LIMIT 30",
+            "SELECT id,status,payload,created_at FROM ai.conversation ORDER BY created_at DESC LIMIT 30",
             {},
         )
         result["catalogue"] = [

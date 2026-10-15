@@ -33,13 +33,14 @@ export async function api<T = Data>(
   body?: unknown,
   signal?: AbortSignal,
 ): Promise<T> {
+  const timeout = route === "investigations" ? 100000 : 45000;
   const response = await fetch("/api/v1/" + route, {
     method: body ? "POST" : "GET",
     headers: body ? { "Content-Type": "application/json" } : undefined,
     body: body ? JSON.stringify(body) : undefined,
     signal: signal
-      ? AbortSignal.any([signal, AbortSignal.timeout(45000)])
-      : AbortSignal.timeout(45000),
+      ? AbortSignal.any([signal, AbortSignal.timeout(timeout)])
+      : AbortSignal.timeout(timeout),
   });
   if (!response.ok) {
     const error = await response

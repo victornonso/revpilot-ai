@@ -1031,17 +1031,44 @@ function Analyst({ data, onChange }: { data: Data; onChange: () => void }) {
       setAnswer(r);
       onChange();
     },
+    onError: () => onChange(),
+  });
+  const saved = useMutation({
+    mutationFn: (id: string) => api("investigations/" + id),
+    onSuccess: (r) => setAnswer(r),
   });
   return (
     <section className="analyst-workspace">
       <aside className="investigation-sidebar">
         <span className="eyebrow">INVESTIGATIONS</span>
         <h3>Your analytical notebook</h3>
-        <div className="empty compact">
-          {Array.isArray(data.conversations) && data.conversations.length
-            ? "Saved investigations are available."
-            : "No saved investigations yet."}
-        </div>
+        {Array.isArray(data.conversations) && data.conversations.length ? (
+          <div
+            className="saved-investigations"
+            aria-label="Saved investigations"
+          >
+            {(data.conversations as Row[]).map((conversation) => (
+              <button
+                key={String(conversation.id)}
+                onClick={() => saved.mutate(String(conversation.id))}
+                disabled={saved.isPending || investigation.isPending}
+              >
+                <span>
+                  {String(
+                    (conversation.payload as Row)?.title || "Investigation",
+                  )}
+                  <small>
+                    {String(conversation.status || "Earlier investigation")} ·{" "}
+                    {timestamp(conversation.created_at)}
+                  </small>
+                </span>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="empty compact">No saved investigations yet.</div>
+        )}
+        {saved.isError && <p role="alert">{saved.error.message}</p>}
         <span className="eyebrow">START WITH A QUESTION</span>
         {[
           "Why did invoiced revenue change?",
@@ -1080,7 +1107,11 @@ function Analyst({ data, onChange }: { data: Data; onChange: () => void }) {
           )}
           {answer !== null && (
             <article className="analytical-answer">
-              <h3>Investigation result</h3>
+              <h3>
+                {(answer as Row).status === "failed"
+                  ? "Investigation interrupted"
+                  : "Investigation result"}
+              </h3>
               <p>{String((answer as Row).answer || "No response returned.")}</p>
               <details>
                 <summary>Inspect evidence references</summary>

@@ -1,14 +1,69 @@
 """Bounded structured-tool investigation over a tenant-scoped metric catalogue."""
 
+import asyncio
 import json
 import logging
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 import httpx
 from pydantic import BaseModel, Field
+from sqlalchemy import text
 
 from apps.api.analytics import CATALOGUE, dashboard
 from apps.api.db import rows, session, settings
+
+
+class ProviderUnavailableError(RuntimeError):
+    """A temporary provider failure that the caller can safely retry."""
+
+    def __init__(self, message, code="provider_unavailable", retry_seconds=30):
+        super().__init__(message)
+        self.code = code
+        self.retry_seconds = retry_seconds
+
+
+async def request_completion(client, payload):
+    for attempt in range(3):
+        try:
+            response = await client.post(
+                settings.llm_base_url.rstrip("/") + "/chat/completions",
+                headers={"Authorization": "Bearer " + settings.llm_api_key},
+                json=payload,
+            )
+        except (httpx.TimeoutException, httpx.NetworkError) as exc:
+            if attempt == 2:
+                raise ProviderUnavailableError(
+                    "The AI provider could not be reached. Please try again shortly."
+                ) from exc
+        else:
+            if response.status_code == 429:
+                try:
+                    delay = max(
+                        1, min(86400, int(response.headers.get("Retry-After", "60")))
+                    )
+                except ValueError:
+                    delay = 60
+                raise ProviderUnavailableError(
+                    f"The AI provider has rate-limited requests. Retry in {delay} seconds; if this continues, check the project's model quota in AI Studio.",
+                    code="rate_limited",
+                    retry_seconds=delay,
+                )
+            if response.status_code in (401, 403, 404):
+                raise ProviderUnavailableError(
+                    "The AI provider rejected the configured key, permissions or model. Check the server's provider configuration.",
+                    code="provider_configuration",
+                    retry_seconds=300,
+                )
+            if response.status_code not in (500, 502, 503, 504):
+                response.raise_for_status()
+                return response
+            if attempt == 2:
+                raise ProviderUnavailableError(
+                    "The AI provider is temporarily unavailable after three attempts. Please try again shortly."
+                )
+        await asyncio.sleep(0.5 * (2**attempt))
+    raise ProviderUnavailableError("The AI provider did not respond.")
 
 
 class Filters(BaseModel):
@@ -150,7 +205,115 @@ def execute(name, arguments):
     raise ValueError("Unsupported tool.")
 
 
+def finish_conversation(conversation_id, status, payload):
+    with session() as conn:
+        conn.execute(
+            text(
+                "UPDATE ai.conversation SET status=:status,payload=payload || cast(:payload as jsonb),version=version+1 WHERE id=:id"
+            ),
+            {"id": conversation_id, "status": status, "payload": json.dumps(payload)},
+        )
+
+
 async def investigate(question):
+    from apps.api.main import store
+
+    with session() as conn:
+        conn.execute(
+            text(
+                "SELECT pg_advisory_xact_lock(hashtextextended(current_setting('app.org_id') || :model, 0))"
+            ),
+            {"model": settings.llm_provider + ":" + settings.llm_model},
+        )
+        active = rows(
+            conn,
+            "SELECT id FROM ai.conversation WHERE status='running' AND payload->>'provider'=:provider AND payload->>'model'=:model AND created_at>now()-interval '90 seconds' LIMIT 1",
+            {"provider": settings.llm_provider, "model": settings.llm_model},
+        )
+        if active:
+            raise ProviderUnavailableError(
+                "An investigation is already running for this workspace. Wait for it to finish before starting another.",
+                "already_running",
+                5,
+            )
+        blocked = rows(
+            conn,
+            "SELECT payload FROM ai.conversation WHERE status='failed' AND payload->>'failure_code' IN ('provider_unavailable','rate_limited','provider_configuration') AND payload->>'provider'=:provider AND payload->>'model'=:model AND (payload->>'retry_at')::timestamptz>now() ORDER BY created_at DESC LIMIT 1",
+            {"provider": settings.llm_provider, "model": settings.llm_model},
+        )
+        if blocked:
+            payload = blocked[0]["payload"]
+            delay = max(
+                1,
+                int(
+                    (
+                        datetime.fromisoformat(payload["retry_at"]) - datetime.now(UTC)
+                    ).total_seconds()
+                ),
+            )
+            raise ProviderUnavailableError(
+                f"{payload['failure_message']} Provider cooldown: {delay} seconds remaining.",
+                payload["failure_code"],
+                delay,
+            )
+        conversation = store(
+            conn,
+            "ai.conversation",
+            {
+                "title": question[:100],
+                "provider": settings.llm_provider,
+                "model": settings.llm_model,
+            },
+            "running",
+        )
+        store(
+            conn,
+            "ai.message",
+            {
+                "conversation_id": str(conversation["id"]),
+                "role": "user",
+                "content": question,
+            },
+            "recorded",
+        )
+    try:
+        result = await _investigate(question, conversation)
+    except Exception as exc:
+        if isinstance(exc, ProviderUnavailableError):
+            failure = exc
+        elif isinstance(exc, TimeoutError):
+            failure = ProviderUnavailableError(
+                "The investigation exceeded its time limit. Please try a narrower question.",
+                "deadline_exceeded",
+            )
+        else:
+            logging.getLogger(__name__).exception("investigation_failed")
+            failure = ProviderUnavailableError(
+                "The investigation could not complete. Its collected evidence has been saved.",
+                "investigation_failed",
+            )
+        finish_conversation(
+            conversation["id"],
+            "failed",
+            {
+                "failure_code": failure.code,
+                "failure_message": str(failure),
+                "retry_at": (
+                    datetime.now(UTC) + timedelta(seconds=failure.retry_seconds)
+                ).isoformat(),
+                "finished_at": datetime.now(UTC).isoformat(),
+            },
+        )
+        if failure is exc:
+            raise
+        raise failure from exc
+    finish_conversation(
+        conversation["id"], "completed", {"finished_at": datetime.now(UTC).isoformat()}
+    )
+    return {**result, "status": "completed"}
+
+
+async def _investigate(question, conversation):
     from apps.api.main import store
 
     if not settings.llm_api_key or not settings.llm_model:
@@ -172,34 +335,29 @@ async def investigate(question):
         {"role": "user", "content": question},
     ]
     evidence = []
-    with session() as conn:
-        conversation = store(conn, "ai.conversation", {"title": question[:100]}, "open")
-        store(
-            conn,
-            "ai.message",
-            {
-                "conversation_id": str(conversation["id"]),
-                "role": "user",
-                "content": question,
-            },
-            "recorded",
-        )
-    async with httpx.AsyncClient(timeout=25) as client:
+    async with asyncio.timeout(85), httpx.AsyncClient(timeout=20) as client:
         for round in range(4):
+            final_round = round == 3 or len(evidence) >= 10
+            if final_round:
+                messages.append(
+                    {
+                        "role": "system",
+                        "content": "The evidence collection budget is complete. Answer now using only the retrieved evidence. State any unanswered parts and limitations; do not request more tools.",
+                    }
+                )
             token_parameter = (
                 "max_tokens"
                 if settings.llm_provider == "gemini"
                 else "max_completion_tokens"
             )
-            response = await client.post(
-                settings.llm_base_url.rstrip("/") + "/chat/completions",
-                headers={"Authorization": "Bearer " + settings.llm_api_key},
-                json={
+            response = await request_completion(
+                client,
+                {
                     "model": settings.llm_model,
                     "messages": messages,
                     "tools": definitions(),
-                    "tool_choice": "auto",
-                    token_parameter: 1800,
+                    "tool_choice": "none" if final_round else "auto",
+                    token_parameter: 3000 if final_round else 1800,
                 },
             )
             response.raise_for_status()
@@ -207,9 +365,12 @@ async def investigate(question):
             messages.append(message)
             calls = message.get("tool_calls") or []
             if not calls:
-                answer = (
-                    message.get("content") or "No analytical response was returned."
-                )
+                answer = message.get("content")
+                if not answer or not answer.strip():
+                    raise ProviderUnavailableError(
+                        "The provider returned an empty answer. Collected evidence has been saved.",
+                        "empty_response",
+                    )
                 if not evidence:
                     answer = "No verified evidence was retrieved. " + answer
                 with session() as conn:
@@ -230,12 +391,15 @@ async def investigate(question):
                     "evidence": evidence,
                     "demo": True,
                 }
-            if len(evidence) + len(calls) > 10:
-                raise ValueError("Investigation reached its tool budget.")
             for call in calls:
                 name = call["function"]["name"]
+                args = {}
                 try:
                     args = json.loads(call["function"]["arguments"])
+                    if len(evidence) >= 10:
+                        raise ValueError(
+                            "Tool budget complete. Use the collected evidence to answer."
+                        )
                     result = execute(name, args)
                     status = "success"
                 except Exception as exc:
@@ -249,7 +413,7 @@ async def investigate(question):
                         {
                             "conversation_id": str(conversation["id"]),
                             "tool": name,
-                            "arguments": args if "args" in locals() else {},
+                            "arguments": args,
                             "result": result,
                         },
                         status,
