@@ -13,6 +13,8 @@ from .db import DEMO_ORG, engine, settings
 
 tenant: ContextVar[UUID] = ContextVar("tenant", default=DEMO_ORG)
 role: ContextVar[str] = ContextVar("role", default="demo_operator")
+visitor_scope: ContextVar[str] = ContextVar("visitor_scope", default="")
+visitor_budget_key: ContextVar[str] = ContextVar("visitor_budget_key", default="")
 
 
 @lru_cache(maxsize=4)
@@ -94,7 +96,7 @@ def permitted(path, method):
         if path in ("/api/v1/access/unlock", "/api/v1/access/lock"):
             return True
         if path.startswith("/api/v1/investigations"):
-            return current == "demo_owner"
+            return current == "demo_owner" or settings.public_analyst_enabled
         if method in ("GET", "HEAD", "OPTIONS"):
             return True
         return current == "demo_owner" and path in (

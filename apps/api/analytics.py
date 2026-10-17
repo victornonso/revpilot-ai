@@ -673,25 +673,26 @@ def dashboard(
             metric("imports", len(result["imports"])),
         ]
     elif screen == "analyst":
-        from .auth import role
+        from .auth import role, visitor_scope
         from .db import settings
 
         private_access = not settings.public_demo_mode or role.get() == "demo_owner"
         result["private_owner_session"] = settings.public_demo_mode and private_access
         result["private_access_required"] = (
-            settings.public_demo_mode and not private_access
+            settings.public_demo_mode
+            and not private_access
+            and not settings.public_analyst_enabled
         )
-        result["configured"] = (
-            bool(__import__("apps.api.db", fromlist=["settings"]).settings.llm_api_key)
-            and private_access
-        )
+        result["configured"] = bool(
+            __import__("apps.api.db", fromlist=["settings"]).settings.llm_api_key
+        ) and (private_access or settings.public_analyst_enabled)
         result["conversations"] = (
             query(
                 conn,
-                "SELECT id,status,payload,created_at FROM ai.conversation ORDER BY created_at DESC LIMIT 30",
-                {},
+                "SELECT id,status,payload,created_at FROM ai.conversation WHERE (:scope='' AND coalesce(payload->>'visitor_scope','')='') OR payload->>'visitor_scope'=:scope ORDER BY created_at DESC LIMIT 30",
+                {"scope": visitor_scope.get()},
             )
-            if private_access
+            if private_access or settings.public_analyst_enabled
             else []
         )
         result["catalogue"] = [

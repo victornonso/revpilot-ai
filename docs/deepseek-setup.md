@@ -16,8 +16,9 @@ Installations must have a funded DeepSeek API account. Hosting remains on free
 plans; model usage is billed separately. Thinking is explicitly disabled for
 bounded response times. Investigations allow four provider rounds and ten
 validated analytical tool executions, with evidence IDs persisted in PostgreSQL.
-The final round cannot request more tools. Private hosted access requires a
-signed owner session. Quota, credit and configuration failures are reported
+The final round cannot request more tools. Hosted recruiters receive signed visitor sessions with isolated histories and
+durable per-visitor, per-network and global usage limits. Private owner access
+uses a separate signed session. Quota, credit and configuration failures are reported
 explicitly without a silent provider fallback. These per-run bounds are not a
 monthly spending limit.
 

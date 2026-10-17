@@ -223,6 +223,7 @@ def finish_conversation(conversation_id, status, payload):
 
 
 async def investigate(question):
+    from apps.api.auth import visitor_budget_key, visitor_scope
     from apps.api.main import store
 
     with session() as conn:
@@ -232,6 +233,28 @@ async def investigate(question):
             ),
             {"model": settings.llm_provider + ":" + settings.llm_model},
         )
+        scope = visitor_scope.get()
+        if scope:
+            quota = rows(
+                conn,
+                """SELECT
+                count(*) FILTER (WHERE created_at > now()-interval '1 hour' AND payload->>'visitor_scope'=:scope) AS visitor_hour,
+                count(*) FILTER (WHERE payload->>'visitor_budget_key'=:budget_key) AS address_day,
+                count(*) AS total_day
+                FROM ai.conversation WHERE payload ? 'visitor_scope'
+                AND created_at > now()-interval '1 day'""",
+                {"scope": scope, "budget_key": visitor_budget_key.get()},
+            )[0]
+            if (
+                quota["visitor_hour"] >= 3
+                or quota["address_day"] >= 10
+                or quota["total_day"] >= 50
+            ):
+                raise ProviderUnavailableError(
+                    "The portfolio demo's investigation allowance is reached. Please return later; dashboards and exports remain available.",
+                    "demo_quota",
+                    3600,
+                )
         active = rows(
             conn,
             "SELECT id FROM ai.conversation WHERE status='running' AND payload->>'provider'=:provider AND payload->>'model'=:model AND created_at>now()-interval '90 seconds' LIMIT 1",
@@ -270,6 +293,14 @@ async def investigate(question):
                 "title": question[:100],
                 "provider": settings.llm_provider,
                 "model": settings.llm_model,
+                **(
+                    {
+                        "visitor_scope": scope,
+                        "visitor_budget_key": visitor_budget_key.get(),
+                    }
+                    if scope
+                    else {}
+                ),
             },
             "running",
         )

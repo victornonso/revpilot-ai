@@ -37,12 +37,13 @@ credentials remain outside the hosted API.
 
 `PUBLIC_DEMO_MODE=true` grants anonymous read access to analytical views and
 exports. It does not grant shared-record writes or access to private
-investigations. `PRIVATE_ACCESS_KEY` unlocks an eight-hour owner session, signed
+owner investigations. `PUBLIC_ANALYST_ENABLED=true` enables recruiter investigations
+with separate signed visitor sessions and persisted usage limits. `PRIVATE_ACCESS_KEY` unlocks an eight-hour owner session, signed
 with `SESSION_SECRET` and stored in a secure HTTP-only, same-site cookie. Failed
 unlock attempts are rate-limited. Private access can be explicitly locked again.
 
 `PRIVATE_ANALYST_ENABLED=true` permits the owner's configured model provider
-behind that session. DeepSeek calls are limited to authenticated owner investigations.
+behind that session. With public analyst access enabled, recruiters can also run bounded investigations.
 Provider credentials are kept in Render's server-side environment. The access
 key is generated in ignored `.local/owner-access.txt`; do not commit it or place
 it in a client environment variable.
@@ -93,9 +94,14 @@ Paid API credits are required, independently of the free hosting services.
 Insufficient-credit responses stop immediately and persist a retry window.
 There is no silent fallback to another paid provider.
 
-Hosted access remains owner-only unless a separate public usage policy is
-configured. Switching providers does not expose keys or private investigations
-to visitors. The generated commercial dataset contains demonstration records.
+Hosted recruiter access is enabled with `PUBLIC_ANALYST_ENABLED=true`. Signed
+HTTP-only visitor cookies isolate investigation histories and saved results.
+PostgreSQL enforces three runs per visitor per hour, ten per HMAC-hashed network
+identifier per rolling day and fifty visitor runs per rolling day across the
+demo, under the same transaction lock as concurrent-run admission. Clearing
+cookies does not reset the network or global quotas. No raw IP is stored in
+investigation records. Owner investigations remain outside visitor histories.
+Switching providers does not expose keys or owner investigations to visitors. The generated commercial dataset contains demonstration records.
 
 Use `uv run python tools/prepare_hosted_environment.py` to prepare ignored
 `.local/render.env` with standard dotenv parsing, application-role database

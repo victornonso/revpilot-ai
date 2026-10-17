@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     demo_mode: bool = True
     public_demo_mode: bool = False
     private_analyst_enabled: bool = False
+    public_analyst_enabled: bool = False
     private_access_key: str = ""
     llm_api_key: str = ""
     llm_base_url: str = "https://api.deepseek.com"

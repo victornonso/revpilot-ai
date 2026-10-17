@@ -106,12 +106,14 @@ component states and responsive behaviour.
 The hosted portfolio edition uses Vercel, Render Free and a separate Neon
 PostgreSQL 18 project. Visitors can explore the nine analytical screens and
 export the demonstration data. Shared-record mutations are restricted, and
-private investigations are hidden from anonymous visitors.
+visitor investigations are isolated in signed browser sessions.
 
-Owner-only analyst access uses a signed, expiring, HTTP-only secure cookie and a
-server-side access key. Provider credentials stay in the API environment.
-The DeepSeek configuration is for the owner's private investigations; API usage
-is billed against the provider balance and is not exposed anonymously. The local workspace retains its
+Recruiters can run evidence-grounded DeepSeek investigations without signing in.
+A signed HTTP-only browser cookie isolates each visitor's history. Provider
+credentials stay in the API environment. Durable quotas limit each visitor to
+three investigations per hour, each network to ten per day, and the shared demo
+to fifty per day. Owner access remains available through a separate signed
+session. API usage is billed against the provider balance. The local workspace retains its
 internal approval and Temporal workflow execution.
 
 The dataset is a fixed generated snapshot. Demo mode does not apply a rolling

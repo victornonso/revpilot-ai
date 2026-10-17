@@ -18,7 +18,14 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import text
 
 from .analytics import CATALOGUE, dashboard
-from .auth import authenticate, permitted, role, tenant
+from .auth import (
+    authenticate,
+    permitted,
+    role,
+    tenant,
+    visitor_budget_key,
+    visitor_scope,
+)
 from .db import rows, session, settings
 
 app = FastAPI(title="RevPilot API", version="0.1.0")
@@ -42,6 +49,9 @@ async def boundary(request: Request, call_next):
     request_id = str(uuid4())
     begin = time.monotonic()
     ip = request.client.host if request.client else "unknown"
+    visitor_scope.set("")
+    visitor_budget_key.set("")
+    visitor_cookie = None
     window = limits[ip]
     now = time.monotonic()
     while window and window[0] < now - 60:
@@ -58,6 +68,36 @@ async def boundary(request: Request, call_next):
             organisation, member_role = authenticate(request)
             tenant.set(organisation)
             role.set(member_role)
+            if settings.public_demo_mode and settings.public_analyst_enabled:
+                try:
+                    claims = jwt.decode(
+                        request.cookies.get("revpilot_visitor", ""),
+                        settings.session_secret,
+                        algorithms=["HS256"],
+                        audience="revpilot-visitor",
+                        options={"require": ["exp", "aud", "sub"]},
+                    )
+                    visitor_id = str(UUID(claims["sub"]))
+                except (jwt.InvalidTokenError, ValueError, KeyError):
+                    visitor_id = str(uuid4())
+                    visitor_cookie = jwt.encode(
+                        {
+                            "sub": visitor_id,
+                            "aud": "revpilot-visitor",
+                            "exp": datetime.now(UTC) + timedelta(days=30),
+                        },
+                        settings.session_secret,
+                        algorithm="HS256",
+                    )
+                if member_role != "demo_owner":
+                    visitor_scope.set(visitor_id)
+                    visitor_budget_key.set(
+                        hmac.new(
+                            settings.session_secret.encode(),
+                            ip.encode(),
+                            hashlib.sha256,
+                        ).hexdigest()
+                    )
             if not permitted(request.url.path, request.method):
                 return JSONResponse(
                     {"detail": "Your role cannot perform this action."}, 403
@@ -73,7 +113,18 @@ async def boundary(request: Request, call_next):
             500,
         )
     response.headers["X-Request-ID"] = request_id
+    if visitor_cookie:
+        response.set_cookie(
+            "revpilot_visitor",
+            visitor_cookie,
+            max_age=30 * 86400,
+            httponly=True,
+            secure=True,
+            samesite="strict",
+        )
     response.headers["X-Content-Type-Options"] = "nosniff"
+    if request.url.path.startswith("/api/"):
+        response.headers["Cache-Control"] = "private, no-store"
     log.info(
         "%s %s %s %.3f",
         request_id,
@@ -553,7 +604,7 @@ async def investigate(body: Investigation):
         return await run(body.question)
     except ProviderUnavailableError as exc:
         raise HTTPException(
-            429 if exc.code == "rate_limited" else 503,
+            429 if exc.code in ("rate_limited", "demo_quota") else 503,
             str(exc),
             headers={"Retry-After": str(exc.retry_seconds)},
         ) from exc
@@ -579,6 +630,16 @@ def saved_investigation(conversation_id: UUID):
             {"id": conversation_id},
         )
         if not conversations:
+            raise HTTPException(404, "Investigation not found.")
+        if (
+            settings.public_demo_mode
+            and role.get() != "demo_owner"
+            and (
+                not visitor_scope.get()
+                or conversations[0]["payload"].get("visitor_scope")
+                != visitor_scope.get()
+            )
+        ):
             raise HTTPException(404, "Investigation not found.")
         messages = rows(
             conn,
