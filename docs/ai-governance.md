@@ -12,7 +12,7 @@ key means an explicit unavailable state, not a fabricated assistant response.
 Provider responses are rendered as escaped text. Contact PII is not an analytical
 tool input or output. Exact-payload approval is required before any action executes.
 
-Gemini free quota is prepared for local development; see gemini-setup.md. No key
+DeepSeek uses a server-only API key and bounded analytical tool calls; see deepseek-setup.md. No key
 is configured or committed. Public UK deployment requires a permitted provider
 tier under Google's current terms. Billing is not enabled automatically.
 

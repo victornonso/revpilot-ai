@@ -44,7 +44,7 @@ def test_provider_retries_only_transient_failures(monkeypatch, statuses, expecte
     assert len(calls) == len(statuses)
 
 
-@pytest.mark.parametrize("provider", ["gemini", "deepseek", "openai"])
+@pytest.mark.parametrize("provider", ["deepseek", "openai"])
 @pytest.mark.parametrize("calls_per_round,rounds,executions", [(1, 4, 3), (11, 2, 10)])
 def test_final_round_produces_answer_without_more_tools(
     monkeypatch, provider, calls_per_round, rounds, executions

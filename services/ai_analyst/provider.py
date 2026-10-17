@@ -9,7 +9,7 @@ def completion_payload(provider, model, messages, tools, final_round):
         "tool_choice": "none" if final_round else "auto",
     }
     token_parameter = (
-        "max_tokens" if provider in ("gemini", "deepseek") else "max_completion_tokens"
+        "max_tokens" if provider == "deepseek" else "max_completion_tokens"
     )
     payload[token_parameter] = 3000 if final_round else 1800
     if provider == "deepseek":

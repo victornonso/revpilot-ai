@@ -23,7 +23,7 @@ implemented local system under active development, not a completed production re
 | Complete production ML services | In progress | Bookings/recurring forecasts, live scoring, drift, lift and rollback remain |
 | MLflow tracking | Tested | Local tracking runs, evaluation reports and artefacts |
 | AI analytical tool loop | Implemented | Ten governed tools, audit/evidence persistence, bounded provider rounds |
-| Gemini connection | Tested locally | Gemini 3.8 Flash authenticated; server-only key in ignored configuration |
+| DeepSeek connection | Provider adapter tested | Server-only credentials, bounded non-thinking tool calls and evidence persistence |
 | Live provider answer quality | Initial verification passed | Actual metric definition/query tool calls returned persisted evidence IDs and reconciled invoiced revenue; broader testing remains |
 | OIDC bearer authentication / memberships | Implemented | JWT verification and database membership; browser login still missing |
 | Full tenant governance | In progress | Typed operational relationship constraints, per-owner policies and retention remain |

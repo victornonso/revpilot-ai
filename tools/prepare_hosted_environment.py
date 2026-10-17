@@ -21,7 +21,7 @@ def runtime_environment(config, provider_file):
     )
     runtime["MIGRATION_DATABASE_URL"] = runtime["DATABASE_URL"]
     runtime["PYTHON_VERSION"] = "3.12.15"
-    runtime.setdefault("LLM_TIER", "free")
+    runtime.setdefault("LLM_TIER", "paid")
     return runtime
 
 

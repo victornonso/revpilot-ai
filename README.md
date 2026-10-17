@@ -34,7 +34,7 @@ actions to Temporal workflows.
 | Approve exact action payloads | Connect approval to the action actually executed | Payload/version checks, replay rejection and durable Temporal execution |
 | Evaluate models in time order | Measure performance against later observations | Recorded backtests, registered artefacts and held-out benchmark results |
 
-Gemini and DeepSeek are supported through server-side provider configuration. Provider keys
+DeepSeek is supported through server-side provider configuration. Provider keys
 remain outside the frontend. Unconfigured, rate-limited and unavailable providers
 have explicit response states; an unavailable answer is not replaced with a
 manufactured analytical result.
@@ -110,8 +110,8 @@ private investigations are hidden from anonymous visitors.
 
 Owner-only analyst access uses a signed, expiring, HTTP-only secure cookie and a
 server-side access key. Provider credentials stay in the API environment.
-The current free Gemini configuration is for the owner's private investigations,
-not an anonymously available AI service. The local workspace retains its
+The DeepSeek configuration is for the owner's private investigations; API usage
+is billed against the provider balance and is not exposed anonymously. The local workspace retains its
 internal approval and Temporal workflow execution.
 
 The dataset is a fixed generated snapshot. Demo mode does not apply a rolling

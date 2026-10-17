@@ -42,7 +42,7 @@ with `SESSION_SECRET` and stored in a secure HTTP-only, same-site cookie. Failed
 unlock attempts are rate-limited. Private access can be explicitly locked again.
 
 `PRIVATE_ANALYST_ENABLED=true` permits the owner's configured model provider
-behind that session. The free Gemini setup is not exposed as a public AI client.
+behind that session. DeepSeek calls are limited to authenticated owner investigations.
 Provider credentials are kept in Render's server-side environment. The access
 key is generated in ignored `.local/owner-access.txt`; do not commit it or place
 it in a client environment variable.
