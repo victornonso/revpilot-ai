@@ -10,7 +10,14 @@ from services.ai_analyst import orchestration as ai
 
 @pytest.mark.parametrize(
     "statuses,expected",
-    [([503, 200], 200), ([503, 503, 503], 503), ([429], 429), ([401], 401)],
+    [
+        ([503, 200], 200),
+        ([503, 503, 503], 503),
+        ([429], 429),
+        ([401], 401),
+        ([400], 400),
+        ([402], 402),
+    ],
 )
 def test_provider_retries_only_transient_failures(monkeypatch, statuses, expected):
     calls = []
@@ -37,9 +44,10 @@ def test_provider_retries_only_transient_failures(monkeypatch, statuses, expecte
     assert len(calls) == len(statuses)
 
 
+@pytest.mark.parametrize("provider", ["gemini", "deepseek", "openai"])
 @pytest.mark.parametrize("calls_per_round,rounds,executions", [(1, 4, 3), (11, 2, 10)])
 def test_final_round_produces_answer_without_more_tools(
-    monkeypatch, calls_per_round, rounds, executions
+    monkeypatch, provider, calls_per_round, rounds, executions
 ):
     from apps.api import main
 
@@ -77,6 +85,7 @@ def test_final_round_produces_answer_without_more_tools(
             request=httpx.Request("POST", "https://provider.example"),
         )
 
+    monkeypatch.setattr(ai.settings, "llm_provider", provider)
     monkeypatch.setattr(ai.settings, "llm_api_key", "test-only")
     monkeypatch.setattr(ai.settings, "llm_model", "fixture")
     monkeypatch.setattr(ai, "session", fake_session)
@@ -89,6 +98,11 @@ def test_final_round_produces_answer_without_more_tools(
     monkeypatch.setattr(ai, "execute", execute)
     monkeypatch.setattr(ai, "request_completion", completion)
     result = asyncio.run(ai._investigate("Explain revenue", {"id": uuid4()}))
+    if provider == "deepseek":
+        assert all(p["thinking"] == {"type": "disabled"} for p in payloads)
+        assert all(
+            "max_tokens" in p and "max_completion_tokens" not in p for p in payloads
+        )
     assert len(payloads) == rounds
     assert payloads[-1]["tool_choice"] == "none"
     assert len(executed) == executions

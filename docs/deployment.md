@@ -27,15 +27,79 @@ uv run python -m apps.worker.main
 
 The development server must not be deployed as a public production service.
 
-## Hosting
+## Hosted portfolio edition
 
-No hosted RevPilot URL is claimed. GitHub source is private. Public deployment
-needs suitable persistent database, API/worker and Temporal hosting, an OIDC
-browser session, secrets configuration, backups, operational monitoring and
-completion of the acceptance gaps. No paid services have been purchased or enabled.
+The portfolio edition runs on Vercel Hobby, Render Free and a separate Neon Free
+PostgreSQL 18 project. The GitHub repository is public. The database is provisioned
+with separate owner/migration and non-superuser application roles. API runtime
+configuration receives only application-role database access; schema migration
+credentials remain outside the hosted API.
+
+`PUBLIC_DEMO_MODE=true` grants anonymous read access to analytical views and
+exports. It does not grant shared-record writes or access to private
+investigations. `PRIVATE_ACCESS_KEY` unlocks an eight-hour owner session, signed
+with `SESSION_SECRET` and stored in a secure HTTP-only, same-site cookie. Failed
+unlock attempts are rate-limited. Private access can be explicitly locked again.
+
+`PRIVATE_ANALYST_ENABLED=true` permits the owner's configured model provider
+behind that session. The free Gemini setup is not exposed as a public AI client.
+Provider credentials are kept in Render's server-side environment. The access
+key is generated in ignored `.local/owner-access.txt`; do not commit it or place
+it in a client environment variable.
+
+The public edition does not run a Temporal development server or imply that
+external automations execute. Approval execution and shared commercial writes
+remain available in the local workspace, separate from the public demo.
+
+The dataset is generated once and preserved. `meta.stale` is false for demo
+organisations, and the interface displays a quiet demo label. A dashboard query
+refresh does not acquire new business records. Failed API requests continue to
+surface as errors.
+
+Render may sleep when idle, and Neon scales its compute to zero. Cold requests
+can take longer; no paid instance or artificial keep-alive is required.
 
 Frontend rewrites use API_INTERNAL_URL at build time. Set it to the backend host
 before building the container or Vercel application. Keep provider secrets on
-the API only. Authenticated API requests use verified OIDC bearer tokens and
-database-authoritative organisation membership; the browser login flow is not
-yet wired. Production live mode must not be exposed before that work is verified.
+the API only. Commercial connected-organisation mode uses verified OIDC bearer
+tokens and database-authoritative membership. Its browser login flow remains
+separate acceptance work; the portfolio demo is not that production mode.
+
+To prepare an isolated hosted demonstration, save its Neon connection in ignored
+`.local/hosted-database-url` and run `uv run python tools/provision_hosted_demo.py`.
+The utility validates the target database, creates the application role, applies
+migrations, seeds the demo, builds SQL marts and records model benchmarks.
+
+## DeepSeek analyst configuration
+
+Set these variables on the API service only, or in ignored `.env.llm` for the
+local workspace:
+
+```dotenv
+LLM_PROVIDER=deepseek
+LLM_BASE_URL=https://api.deepseek.com
+LLM_MODEL=deepseek-flash
+LLM_TIER=paid
+LLM_API_KEY=<dedicated-server-key>
+```
+
+The adapter uses DeepSeek's OpenAI-format chat completion endpoint, explicitly
+disables thinking, and limits output to 1,800 tokens per retrieval round and
+3,000 in the final round. Investigations retain four provider rounds, ten
+authorised tool executions, an 85-second deadline and one concurrent run per
+workspace. Tool results remain tenant-scoped and persisted with evidence IDs.
+These execution limits bound individual runs; they are not a monthly spend cap.
+Paid API credits are required, independently of the free hosting services.
+Insufficient-credit responses stop immediately and persist a retry window.
+There is no silent fallback to another paid provider.
+
+Hosted access remains owner-only unless a separate public usage policy is
+configured. Switching providers does not expose keys or private investigations
+to visitors. The generated commercial dataset contains demonstration records.
+
+Use `uv run python tools/prepare_hosted_environment.py` to prepare ignored
+`.local/render.env` with standard dotenv parsing, application-role database
+credentials and the selected provider tier. Never commit that file. Restart
+the API or redeploy after changing provider variables.
+
+Provider protocol: [DeepSeek thinking and tool calls](https://api-docs.deepseek.com/guides/thinking_mode/).

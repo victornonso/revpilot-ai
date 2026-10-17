@@ -12,6 +12,7 @@ from sqlalchemy import text
 
 from apps.api.analytics import CATALOGUE, dashboard
 from apps.api.db import rows, session, settings
+from services.ai_analyst.provider import completion_payload
 
 
 class ProviderUnavailableError(RuntimeError):
@@ -45,11 +46,17 @@ async def request_completion(client, payload):
                 except ValueError:
                     delay = 60
                 raise ProviderUnavailableError(
-                    f"The AI provider has rate-limited requests. Retry in {delay} seconds; if this continues, check the project's model quota in AI Studio.",
+                    f"The AI provider has rate-limited requests. Retry in {delay} seconds; if this continues, check the provider account's model quota.",
                     code="rate_limited",
                     retry_seconds=delay,
                 )
-            if response.status_code in (401, 403, 404):
+            if response.status_code == 402:
+                raise ProviderUnavailableError(
+                    "The AI provider account has insufficient credits. Add credits in the provider console before retrying.",
+                    code="provider_balance",
+                    retry_seconds=300,
+                )
+            if response.status_code in (400, 401, 403, 404):
                 raise ProviderUnavailableError(
                     "The AI provider rejected the configured key, permissions or model. Check the server's provider configuration.",
                     code="provider_configuration",
@@ -238,7 +245,7 @@ async def investigate(question):
             )
         blocked = rows(
             conn,
-            "SELECT payload FROM ai.conversation WHERE status='failed' AND payload->>'failure_code' IN ('provider_unavailable','rate_limited','provider_configuration') AND payload->>'provider'=:provider AND payload->>'model'=:model AND (payload->>'retry_at')::timestamptz>now() ORDER BY created_at DESC LIMIT 1",
+            "SELECT payload FROM ai.conversation WHERE status='failed' AND payload->>'failure_code' IN ('provider_unavailable','rate_limited','provider_configuration','provider_balance') AND payload->>'provider'=:provider AND payload->>'model'=:model AND (payload->>'retry_at')::timestamptz>now() ORDER BY created_at DESC LIMIT 1",
             {"provider": settings.llm_provider, "model": settings.llm_model},
         )
         if blocked:
@@ -352,20 +359,15 @@ async def _investigate(question, conversation):
                         "content": "The evidence collection budget is complete. Answer now using only the retrieved evidence. State any unanswered parts and limitations; do not request more tools.",
                     }
                 )
-            token_parameter = (
-                "max_tokens"
-                if settings.llm_provider == "gemini"
-                else "max_completion_tokens"
-            )
             response = await request_completion(
                 client,
-                {
-                    "model": settings.llm_model,
-                    "messages": messages,
-                    "tools": definitions(),
-                    "tool_choice": "none" if final_round else "auto",
-                    token_parameter: 3000 if final_round else 1800,
-                },
+                completion_payload(
+                    settings.llm_provider,
+                    settings.llm_model,
+                    messages,
+                    definitions(),
+                    final_round,
+                ),
             )
             response.raise_for_status()
             message = response.json()["choices"][0]["message"]

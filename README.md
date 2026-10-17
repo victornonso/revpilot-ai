@@ -6,7 +6,7 @@ A revenue operations workspace connecting PostgreSQL analytics, predictive
 benchmarks, governed investigations and approval-controlled workflows. Nine
 screens share a responsive design system and real backend services.
 
-The local demonstration uses **Northstar Cloud**, a deterministic synthetic B2B
+The demonstration uses **Northstar Cloud**, a deterministic synthetic B2B
 company. Its results are demonstration evidence, not actual company performance.
 
 Built and maintained by [Victor Okeke](https://victorokeke.co.uk/).
@@ -34,7 +34,7 @@ actions to Temporal workflows.
 | Approve exact action payloads | Connect approval to the action actually executed | Payload/version checks, replay rejection and durable Temporal execution |
 | Evaluate models in time order | Measure performance against later observations | Recorded backtests, registered artefacts and held-out benchmark results |
 
-Gemini is supported through server-side provider configuration. Provider keys
+Gemini and DeepSeek are supported through server-side provider configuration. Provider keys
 remain outside the frontend. Unconfigured, rate-limited and unavailable providers
 have explicit response states; an unavailable answer is not replaced with a
 manufactured analytical result.
@@ -99,15 +99,27 @@ and screenshots at 1440, 768 and 390 pixels. The
 [interface specification](docs/interface-specification.md) documents navigation,
 component states and responsive behaviour.
 
-## Deployment scope and next stage
+## Deployment modes and next stage
 
-RevPilot is an implemented local workspace under active development. Its
-demonstration data, provider-backed investigations and internal workflow
-execution are separate from a production commercial integration.
+[Live analytics workspace](https://revpilot-victor-okeke.vercel.app)
+
+The hosted portfolio edition uses Vercel, Render Free and a separate Neon
+PostgreSQL 18 project. Visitors can explore the nine analytical screens and
+export the demonstration data. Shared-record mutations are restricted, and
+private investigations are hidden from anonymous visitors.
+
+Owner-only analyst access uses a signed, expiring, HTTP-only secure cookie and a
+server-side access key. Provider credentials stay in the API environment.
+The current free Gemini configuration is for the owner's private investigations,
+not an anonymously available AI service. The local workspace retains its
+internal approval and Temporal workflow execution.
+
+The dataset is a fixed generated snapshot. Demo mode does not apply a rolling
+stale-source warning to that snapshot; query failures remain explicit.
 
 The next stage covers browser OIDC login, complete canonical connector sync,
 additional automation adapters, live model scoring and production operational
-controls. Hosted deployment depends on validating those boundaries and suitable
-persistent API, database and Temporal infrastructure. See
+controls. Commercial multi-user deployment needs those boundaries and persistent
+workflow infrastructure. See
 [architecture](docs/architecture.md), [deployment](docs/deployment.md) and the
 [implementation record](docs/implementation-status.md) for the verified scope.
