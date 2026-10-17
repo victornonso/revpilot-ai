@@ -12,12 +12,14 @@ key means an explicit unavailable state, not a fabricated assistant response.
 Provider responses are rendered as escaped text. Contact PII is not an analytical
 tool input or output. Exact-payload approval is required before any action executes.
 
-DeepSeek uses a server-only API key and bounded analytical tool calls; see deepseek-setup.md. No key
-is configured or committed. Public UK deployment requires a permitted provider
-tier under Google's current terms. Billing is not enabled automatically.
+DeepSeek uses a funded, server-only API key and bounded analytical tool calls;
+see [provider configuration](deepseek-setup.md). Credentials are excluded from
+Git and client bundles. Recruiters receive signed HTTP-only visitor sessions.
+Saved investigations are scoped to that session, and PostgreSQL enforces
+per-visitor, per-network and global rolling usage limits before provider calls.
 
-Live provider grounding and adversarial provider tests remain unverified until
-an authorised key is connected. Prompt instructions alone are not a complete
-prompt-injection defence; permissions and allowlisted operations are the hard
-boundary. Production governance still needs retention controls, token accounting,
-structured response validation and broader adversarial evaluations.
+Live grounding is verified locally and on the hosted recruiter experience.
+Broader adversarial evaluations remain necessary: prompt instructions alone
+are not a complete prompt-injection defence. Role checks, typed parameters and
+allowlisted operations provide the execution boundary. Production governance
+also needs retention controls, token accounting and structured response validation.

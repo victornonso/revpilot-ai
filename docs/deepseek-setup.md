@@ -30,3 +30,14 @@ Never commit `.env.llm` or `.local/render.env`.
 - [DeepSeek API format](https://api-docs.deepseek.com/)
 - [Thinking and tool calling](https://api-docs.deepseek.com/guides/thinking_mode/)
 - [Pricing](https://api-docs.deepseek.com/quick_start/pricing/)
+
+## Deployment verification
+
+On 17 October 2026, an unauthenticated recruiter browser completed an invoiced
+revenue investigation against the hosted PostgreSQL dataset. The persisted run
+identified `deepseek` / `deepseek-flash` and returned three evidence references.
+The answer matched the analytical total of GBP 11,950,550.94 for 1 November 2025
+through 14 October 2026. Reopening the saved investigation after reloading worked.
+A separate visitor saw no history. Desktop, tablet and mobile checks at 1440,
+768 and 390 pixels retained the answer without horizontal page overflow.
+Backend verification passed 41 tests; CI passed for the deployed runtime commit.
