@@ -21,5 +21,6 @@ analytics/dbt/logs/
 
 mlruns/
 mlartifacts/
+apps/web/AGENTS.md
 
 analytics/dbt/.user.yml

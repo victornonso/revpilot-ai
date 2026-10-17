@@ -320,11 +320,18 @@ async def _investigate(question, conversation):
         raise ValueError("LLM provider and model are not configured.")
     from urllib.parse import urlparse
 
+    from apps.api.auth import role
+
     if (
         settings.llm_provider == "gemini"
         and settings.llm_tier == "free"
         and urlparse(settings.app_origin).hostname
         not in ("localhost", "127.0.0.1", "::1")
+        and not (
+            settings.public_demo_mode
+            and settings.private_analyst_enabled
+            and role.get() == "demo_owner"
+        )
     ):
         raise ValueError(
             "Free-tier Gemini is configured for local development only. Public deployment requires a permitted provider tier."

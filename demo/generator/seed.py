@@ -33,6 +33,7 @@ def batch(conn, table, records):
 
 def main():
     with create_engine(settings.migration_database_url).begin() as conn:
+        conn.execute(text("SELECT set_config('app.org_id', :org, true)"), {"org": ORG})
         if conn.execute(
             text("SELECT 1 FROM identity.organisation WHERE id=:id"), {"id": ORG}
         ).scalar():

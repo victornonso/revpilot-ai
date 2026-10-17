@@ -1,0 +1,38 @@
+services:
+  - type: web
+    name: revpilot-api
+    runtime: python
+    plan: free
+    region: frankfurt
+    buildCommand: uv sync --frozen --no-dev
+    startCommand: .venv/bin/uvicorn apps.api.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.15
+      - key: DEMO_MODE
+        value: "true"
+      - key: PUBLIC_DEMO_MODE
+        value: "true"
+      - key: PRIVATE_ANALYST_ENABLED
+        value: "true"
+      - key: DATABASE_URL
+        sync: false
+      - key: MIGRATION_DATABASE_URL
+        sync: false
+      - key: SESSION_SECRET
+        sync: false
+      - key: PRIVATE_ACCESS_KEY
+        sync: false
+      - key: APP_ORIGIN
+        sync: false
+      - key: LLM_API_KEY
+        sync: false
+      - key: LLM_BASE_URL
+        sync: false
+      - key: LLM_MODEL
+        sync: false
+      - key: LLM_PROVIDER
+        sync: false
+      - key: LLM_TIER
+        sync: false

@@ -34,6 +34,22 @@ def keys(issuer):
 
 
 def authenticate(request):
+    if settings.public_demo_mode:
+        access = request.cookies.get("revpilot_access", "")
+        if access and settings.private_access_key:
+            try:
+                claims = jwt.decode(
+                    access,
+                    settings.session_secret,
+                    algorithms=["HS256"],
+                    audience="revpilot-owner",
+                    options={"require": ["exp", "aud", "sub"]},
+                )
+                if claims["sub"] == "owner":
+                    return DEMO_ORG, "demo_owner"
+            except jwt.InvalidTokenError:
+                pass
+        return DEMO_ORG, "demo_viewer"
     header = request.headers.get("authorization", "")
     if not header:
         if settings.demo_mode:
@@ -73,9 +89,21 @@ def authenticate(request):
 
 
 def permitted(path, method):
+    current = role.get()
+    if settings.public_demo_mode:
+        if path in ("/api/v1/access/unlock", "/api/v1/access/lock"):
+            return True
+        if path.startswith("/api/v1/investigations"):
+            return current == "demo_owner"
+        if method in ("GET", "HEAD", "OPTIONS"):
+            return True
+        return current == "demo_owner" and path in (
+            "/api/v1/reports",
+            "/api/v1/rules/simulate",
+            "/api/v1/scenarios",
+        )
     if method in ("GET", "HEAD", "OPTIONS"):
         return True
-    current = role.get()
     if current in ("demo_operator", "owner", "administrator", "revenue_operations"):
         return True
     if "/approvals/" in path:

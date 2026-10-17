@@ -596,16 +596,21 @@ function Content({ screen }: { screen: string }) {
             </label>
             <div className="freshness">
               <span
-                className={"status-dot " + (data?.meta.stale ? "warn" : "")}
+                className={
+                  "status-dot " +
+                  (!data?.meta.demo && data?.meta.stale ? "warn" : "")
+                }
               />
-              {data?.meta.refreshed_at ? (
+              {data?.meta.demo ? (
+                "Demo dataset"
+              ) : data?.meta.refreshed_at ? (
                 <>Refreshed {timestamp(data.meta.refreshed_at)}</>
               ) : (
                 "Connecting to data…"
               )}
             </div>
           </div>
-          {data?.meta.stale && (
+          {!data?.meta.demo && data?.meta.stale && (
             <div className="notice amber">
               <Activity size={16} />
               <div>
@@ -738,7 +743,13 @@ function Content({ screen }: { screen: string }) {
                             onSelect={
                               spec.title === "Revenue by segment"
                                 ? (v) => update("segment", v)
-                                : undefined
+                                : spec.kind === "scatter"
+                                  ? (id) =>
+                                      detail(
+                                        { id, name: "Opportunity context" },
+                                        "pipeline",
+                                      )
+                                  : undefined
                             }
                           />
                         ) : (
@@ -769,17 +780,54 @@ function Content({ screen }: { screen: string }) {
                         <p>
                           {numeric(data.total, 0)} records ·{" "}
                           {screen === "recovery"
-                            ? "Priority = exposure Ã— capped stage age / 90; heuristic, not a recovery guarantee."
+                            ? "Priority = exposure × capped stage age / 90; heuristic, not a recovery guarantee."
                             : "Select a record to follow the evidence."}
                         </p>
                       </div>
-                      <input
-                        className="table-search"
-                        aria-label="Filter records"
-                        placeholder="Search records…"
-                        value={params.get("search") || ""}
-                        onChange={(e) => update("search", e.target.value)}
-                      />
+                      <div className="table-filters">
+                        {screen === "pipeline" && (
+                          <>
+                            <select
+                              aria-label="Opportunity stage"
+                              value={params.get("stage") || "All"}
+                              onChange={(e) => update("stage", e.target.value)}
+                            >
+                              {[
+                                "All",
+                                "Discovery",
+                                "Qualified",
+                                "Proposal",
+                                "Negotiation",
+                                "Won",
+                                "Lost",
+                              ].map((v) => (
+                                <option key={v} value={v}>
+                                  {v === "All" ? "All stages" : v}
+                                </option>
+                              ))}
+                            </select>
+                            <select
+                              aria-label="Opportunity owner"
+                              value={params.get("owner") || "All"}
+                              onChange={(e) => update("owner", e.target.value)}
+                            >
+                              <option value="All">All owners</option>
+                              {((data.owners || []) as Row[]).map((r) => (
+                                <option key={String(r.id)} value={String(r.id)}>
+                                  {String(r.name)}
+                                </option>
+                              ))}
+                            </select>
+                          </>
+                        )}
+                        <input
+                          className="table-search"
+                          aria-label="Filter records"
+                          placeholder="Search records…"
+                          value={params.get("search") || ""}
+                          onChange={(e) => update("search", e.target.value)}
+                        />
+                      </div>
                     </div>
                     <Table
                       rows={data.table}
@@ -1022,6 +1070,21 @@ function ProposalForm({ id, onSaved }: { id: string; onSaved: () => void }) {
 }
 
 function Analyst({ data, onChange }: { data: Data; onChange: () => void }) {
+  const lock = useMutation({
+    mutationFn: () => api("access/lock", {}),
+    onSuccess: () => {
+      setAnswer(null);
+      onChange();
+    },
+  });
+  const [accessKey, setAccessKey] = useState("");
+  const unlock = useMutation({
+    mutationFn: () => api("access/unlock", { key: accessKey }),
+    onSuccess: () => {
+      setAccessKey("");
+      onChange();
+    },
+  });
   const [question, setQuestion] = useState(""),
     [answer, setAnswer] = useState<unknown>(null);
   const configured = Boolean(data.configured);
@@ -1096,7 +1159,39 @@ function Analyst({ data, onChange }: { data: Data; onChange: () => void }) {
             Every investigation starts with governed metrics and ends with
             evidence you can inspect.
           </p>
-          {!configured && (
+          {Boolean(data.private_access_required) && (
+            <form
+              className="notice"
+              onSubmit={(event) => {
+                event.preventDefault();
+                unlock.mutate();
+              }}
+            >
+              <ShieldCheck size={18} />
+              <div>
+                <strong>Private analyst access</strong>
+                <p>
+                  Explore the metrics below. Live investigations are available
+                  to the portfolio owner.
+                </p>
+                <label>
+                  Owner access key
+                  <input
+                    type="password"
+                    autoComplete="current-password"
+                    value={accessKey}
+                    onChange={(event) => setAccessKey(event.target.value)}
+                    required
+                  />
+                </label>
+                <button className="button" disabled={unlock.isPending}>
+                  Unlock analyst
+                </button>
+                {unlock.isError && <p role="alert">{unlock.error.message}</p>}
+              </div>
+            </form>
+          )}
+          {!configured && !data.private_access_required && (
             <div className="notice amber">
               <Settings2 size={18} />
               <span>
@@ -1104,6 +1199,15 @@ function Analyst({ data, onChange }: { data: Data; onChange: () => void }) {
                 enable investigations. SQL analytics remain available.
               </span>
             </div>
+          )}
+          {Boolean(data.private_owner_session) && (
+            <button
+              className="button secondary"
+              onClick={() => lock.mutate()}
+              disabled={lock.isPending}
+            >
+              Lock private analyst
+            </button>
           )}
           {answer !== null && (
             <article className="analytical-answer">

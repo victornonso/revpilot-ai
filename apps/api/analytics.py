@@ -111,12 +111,16 @@ def dashboard(
     sort="amount",
     direction="desc",
     page=1,
+    stage="All",
+    owner="All",
 ):
     p = {
         "start": start,
         "end": end,
         "segment": segment,
         "search": f"%{search}%",
+        "stage": stage,
+        "owner": owner,
         "limit": 20,
         "offset": (page - 1) * 20,
     }
@@ -210,7 +214,9 @@ def dashboard(
     )
     result["meta"]["refreshed_at"] = latest
     result["meta"]["stale"] = bool(
-        latest and (datetime.now(UTC) - latest).total_seconds() > 86400
+        not result["meta"]["demo"]
+        and latest
+        and (datetime.now(UTC) - latest).total_seconds() > 86400
     )
     if screen == "overview":
         cash = scalar(
@@ -305,14 +311,43 @@ def dashboard(
         }
         order = allowed.get(sort, "amount")
         way = "ASC" if direction == "asc" else "DESC"
-        where = f"created_at<:end AND {pipeline_scope} AND (name ILIKE :search OR account ILIKE :search)"
+        where = f"created_at<:end AND {pipeline_scope} AND (name ILIKE :search OR account ILIKE :search) AND (:stage='All' OR stage=:stage) AND (:owner='All' OR owner_id::text=:owner)"
         result["table"] = query(
             conn,
-            f"SELECT id,name opportunity,account,owner,stage,amount,expected_close,days_in_stage,stage_weight*100 stage_weight_percent,CASE WHEN days_in_stage>30 AND stage NOT IN ('Won','Lost') THEN 'Stalled' ELSE 'On track' END risk FROM mart.pipeline WHERE {where} ORDER BY {order} {way},id LIMIT :limit OFFSET :offset",
+            f"SELECT id,name opportunity,account,owner,stage,amount,expected_close,days_in_stage,stage_weight*100 stage_weight_percent,CASE WHEN days_in_stage>30 AND stage NOT IN ('Won','Lost') THEN 'Stalled' WHEN stage IN ('Won','Lost') THEN stage ELSE 'On track' END risk FROM mart.pipeline WHERE {where} ORDER BY {order} {way},id LIMIT :limit OFFSET :offset",
             p,
         )
         result["total"] = scalar(
             conn, f"SELECT count(*) FROM mart.pipeline WHERE {where}", p
+        )
+        result["charts"].append(
+            chart(
+                conn,
+                "Opportunity risk matrix",
+                """SELECT id,name,days_in_stage age,amount value
+          FROM mart.pipeline WHERE stage NOT IN ('Won','Lost') AND created_at<:end
+          AND (:segment='All' OR segment=:segment) ORDER BY amount DESC LIMIT 200""",
+                p,
+                "scatter",
+                "GBP",
+            )
+        )
+        result["charts"].append(
+            chart(
+                conn,
+                "Stage-entry cohort progression",
+                """SELECT h.to_stage name,count(DISTINCT h.opportunity_id) value
+          FROM core.opportunity_stage_history h JOIN mart.pipeline o ON (o.org_id,o.id)=(h.org_id,h.opportunity_id)
+          WHERE o.created_at>=:start AND o.created_at<:end AND h.occurred_at<:end
+          AND h.to_stage!='Lost' AND (:segment='All' OR o.segment=:segment)
+          GROUP BY h.to_stage ORDER BY array_position(ARRAY['Discovery','Qualified','Proposal','Negotiation','Won'],h.to_stage)""",
+                p,
+                "bar",
+                "opportunities",
+            )
+        )
+        result["owners"] = query(
+            conn, "SELECT id,name FROM core.sales_rep ORDER BY name", {}
         )
     elif screen == "customers":
         active = scalar(
@@ -365,6 +400,60 @@ def dashboard(
         )
         result["total"] = scalar(
             conn, f"SELECT count(*) FROM core.account a WHERE {where}", p
+        )
+        retention = query(
+            conn,
+            """WITH balances AS (
+          SELECT s.account_id,
+          sum(s.monthly_amount) FILTER(WHERE s.started_at<:start AND (s.ended_at IS NULL OR s.ended_at>=:start)) start_mrr,
+          sum(s.monthly_amount) FILTER(WHERE s.started_at<:start AND (s.ended_at IS NULL OR s.ended_at>=:end)) end_mrr
+          FROM finance.subscription s JOIN core.account a ON (a.org_id,a.id)=(s.org_id,s.account_id)
+          WHERE (:segment='All' OR a.segment=:segment) GROUP BY s.account_id
+        ) SELECT count(*) FILTER(WHERE start_mrr>0) starting_accounts,
+          100.0*count(*) FILTER(WHERE start_mrr>0 AND coalesce(end_mrr,0)>0)/nullif(count(*) FILTER(WHERE start_mrr>0),0) retention_percent,
+          100.0*count(*) FILTER(WHERE start_mrr>0 AND coalesce(end_mrr,0)=0)/nullif(count(*) FILTER(WHERE start_mrr>0),0) churn_percent,
+          100.0*sum(coalesce(end_mrr,0)) FILTER(WHERE start_mrr>0)/nullif(sum(start_mrr),0) nrr,
+          100.0*sum(least(coalesce(end_mrr,0),start_mrr)) FILTER(WHERE start_mrr>0)/nullif(sum(start_mrr),0) grr
+        FROM balances""",
+            p,
+        )[0]
+        result["metrics"].extend(
+            [
+                metric(
+                    "retention",
+                    retention["retention_percent"],
+                    "%",
+                    "Starting active accounts still subscribed at period end divided by starting active accounts.",
+                ),
+                metric("churn", retention["churn_percent"]),
+                metric(
+                    "nrr",
+                    retention["nrr"],
+                    "%",
+                    "End-period MRR from the starting customer cohort divided by its starting MRR. Prices are fixed in this demonstration history.",
+                ),
+                metric(
+                    "grr",
+                    retention["grr"],
+                    "%",
+                    "Starting-cohort retained MRR, capped at its original MRR, divided by starting MRR. Fixed-price demo history.",
+                ),
+            ]
+        )
+        result["charts"].insert(
+            0,
+            chart(
+                conn,
+                "Customer cohort retention",
+                """SELECT to_char(cohort,'Mon YY') name,months_since_start period,
+          100.0*sum(retained_accounts)/nullif(sum(starting_accounts),0) value
+          FROM mart.subscription_cohorts WHERE cohort>=date_trunc('month',cast(:start as timestamptz))
+          AND cohort<:end AND (:segment='All' OR segment=:segment)
+          GROUP BY cohort,months_since_start ORDER BY cohort,months_since_start""",
+                p,
+                "heatmap",
+                "%",
+            ),
         )
     elif screen == "recovery":
         overdue = scalar(
@@ -584,13 +673,26 @@ def dashboard(
             metric("imports", len(result["imports"])),
         ]
     elif screen == "analyst":
-        result["configured"] = bool(
-            __import__("apps.api.db", fromlist=["settings"]).settings.llm_api_key
+        from .auth import role
+        from .db import settings
+
+        private_access = not settings.public_demo_mode or role.get() == "demo_owner"
+        result["private_owner_session"] = settings.public_demo_mode and private_access
+        result["private_access_required"] = (
+            settings.public_demo_mode and not private_access
         )
-        result["conversations"] = query(
-            conn,
-            "SELECT id,status,payload,created_at FROM ai.conversation ORDER BY created_at DESC LIMIT 30",
-            {},
+        result["configured"] = (
+            bool(__import__("apps.api.db", fromlist=["settings"]).settings.llm_api_key)
+            and private_access
+        )
+        result["conversations"] = (
+            query(
+                conn,
+                "SELECT id,status,payload,created_at FROM ai.conversation ORDER BY created_at DESC LIMIT 30",
+                {},
+            )
+            if private_access
+            else []
         )
         result["catalogue"] = [
             {"id": key, "label": v[0], "unit": v[1], "definition": v[2]}

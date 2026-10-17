@@ -41,6 +41,7 @@ def test_workspaces_are_database_backed(screen):
     body = response.json()
     assert body["meta"]["demo"] is True
     assert body["meta"]["source"] == "PostgreSQL analytical views"
+    assert body["meta"]["stale"] is False
 
 
 def test_tenant_boundary_denies_foreign_reads_and_writes():

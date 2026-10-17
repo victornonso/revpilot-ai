@@ -1,5 +1,6 @@
 import csv
 import hashlib
+import hmac
 import io
 import json
 import logging
@@ -10,6 +11,7 @@ from decimal import Decimal
 from typing import Annotated
 from uuid import UUID, uuid4
 
+import jwt
 from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field
@@ -132,6 +134,58 @@ def health():
     return {"status": "ok", "database": "PostgreSQL", "demo": settings.demo_mode}
 
 
+class PrivateAccess(BaseModel):
+    key: str = Field(min_length=1, max_length=256)
+
+
+@app.post("/api/v1/access/unlock")
+def unlock_private_analyst(body: PrivateAccess, request: Request):
+    ip = request.client.host if request.client else "unknown"
+    attempts = limits["unlock:" + ip]
+    now = time.monotonic()
+    while attempts and attempts[0] < now - 600:
+        attempts.popleft()
+    if len(attempts) >= 5:
+        raise HTTPException(429, "Too many access attempts. Try again in ten minutes.")
+    attempts.append(now)
+    if (
+        not settings.public_demo_mode
+        or not settings.private_access_key
+        or not hmac.compare_digest(
+            body.key.encode(), settings.private_access_key.encode()
+        )
+    ):
+        raise HTTPException(401, "Access key is not valid.")
+    token = jwt.encode(
+        {
+            "sub": "owner",
+            "aud": "revpilot-owner",
+            "exp": datetime.now(UTC) + timedelta(hours=8),
+        },
+        settings.session_secret,
+        algorithm="HS256",
+    )
+    response = JSONResponse({"unlocked": True})
+    response.set_cookie(
+        "revpilot_access",
+        token,
+        httponly=True,
+        secure=True,
+        samesite="strict",
+        max_age=28800,
+    )
+    return response
+
+
+@app.post("/api/v1/access/lock")
+def lock_private_analyst():
+    response = JSONResponse({"unlocked": False})
+    response.delete_cookie(
+        "revpilot_access", secure=True, httponly=True, samesite="strict"
+    )
+    return response
+
+
 @app.get("/api/v1/session")
 def identity():
     with session() as conn:
@@ -157,6 +211,8 @@ def get_screen(
     sort: str = "amount",
     direction: str = "desc",
     page: int = 1,
+    stage: str = "All",
+    owner: str = "All",
 ):
     if screen not in SCREENS:
         raise HTTPException(404, "Unknown workspace.")
@@ -164,10 +220,35 @@ def get_screen(
         raise HTTPException(422, "Unknown segment.")
     if page < 1 or page > 10000:
         raise HTTPException(422, "Invalid page.")
+    if stage not in (
+        "All",
+        "Discovery",
+        "Qualified",
+        "Proposal",
+        "Negotiation",
+        "Won",
+        "Lost",
+    ):
+        raise HTTPException(422, "Unknown opportunity stage.")
+    if owner != "All":
+        try:
+            UUID(owner)
+        except ValueError as exc:
+            raise HTTPException(422, "Invalid owner.") from exc
     begin, finish = dates(start, end)
     with session() as c:
         return dashboard(
-            c, screen, begin, finish, segment, search, sort, direction, page
+            c,
+            screen,
+            begin,
+            finish,
+            segment,
+            search,
+            sort,
+            direction,
+            page,
+            stage,
+            owner,
         )
 
 

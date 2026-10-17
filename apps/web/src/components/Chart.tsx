@@ -16,7 +16,7 @@ import {
   VisualMapComponent,
 } from "echarts/components";
 import { CanvasRenderer } from "echarts/renderers";
-import { ChartSpec, numeric } from "@/lib/api";
+import { ChartSpec, numeric, Row } from "@/lib/api";
 echarts.use([
   LineChart,
   BarChart,
@@ -130,8 +130,105 @@ export default function Chart({
         },
       ];
     }
+    if (spec.kind === "heatmap") {
+      const cohorts = [...new Set(spec.rows.map((r) => String(r.name)))];
+      const periods = [...new Set(spec.rows.map((r) => Number(r.period)))].sort(
+        (a, b) => a - b,
+      );
+      option.grid = { left: 65, right: 15, top: 15, bottom: 65 };
+      option.legend = { show: false };
+      option.xAxis = {
+        type: "category",
+        data: periods.map((p) => "M" + p),
+        axisLabel: { fontSize: 9, color: ink },
+        axisLine: { show: false },
+        axisTick: { show: false },
+      };
+      option.yAxis = {
+        type: "category",
+        inverse: true,
+        data: cohorts,
+        axisLabel: { fontSize: 9, color: ink },
+        axisLine: { show: false },
+        axisTick: { show: false },
+      };
+      option.visualMap = {
+        min: 0,
+        max: 100,
+        orient: "horizontal",
+        left: "center",
+        bottom: 0,
+        itemWidth: 10,
+        itemHeight: 120,
+        text: ["100%", "0%"],
+        textStyle: { color: ink, fontSize: 9 },
+        inRange: { color: ["#edf3f1", "#a1d2bf", "#13a88a", "#075f4f"] },
+      };
+      option.tooltip = {
+        trigger: "item",
+        formatter: (input: unknown) => {
+          const p = input as { value: number[] };
+          return `${cohorts[p.value[1]]} / month ${periods[p.value[0]]}: ${numeric(p.value[2])}% retained`;
+        },
+      };
+      option.series = [
+        {
+          type: "heatmap",
+          data: spec.rows.map((r) => [
+            periods.indexOf(Number(r.period)),
+            cohorts.indexOf(String(r.name)),
+            Number(r.value),
+          ]),
+          itemStyle: { borderWidth: 3, borderColor: dark ? "#18232e" : "#fff" },
+          emphasis: { itemStyle: { borderColor: "#2f6fed" } },
+        },
+      ];
+    }
+    if (spec.kind === "scatter") {
+      const escape = (v: unknown) =>
+        String(v).replace(
+          /[&<>"']/g,
+          (c) =>
+            ({
+              "&": "&amp;",
+              "<": "&lt;",
+              ">": "&gt;",
+              '"': "&quot;",
+              "'": "&#39;",
+            })[c]!,
+        );
+      option.legend = { show: false };
+      option.xAxis = {
+        type: "value",
+        name: "Days in stage",
+        nameLocation: "middle",
+        nameGap: 26,
+        axisLabel: { color: ink, fontSize: 10 },
+        splitLine: { lineStyle: { color: border, type: "dashed" } },
+      };
+      option.tooltip = {
+        trigger: "item",
+        formatter: (input: unknown) => {
+          const p = input as { data: { name: string; value: number[] } };
+          return `${escape(p.data.name)}<br/>Stage age: ${numeric(p.data.value[0], 0)} days<br/>Exposure: £${numeric(p.data.value[1])}`;
+        },
+      };
+      option.series = [
+        {
+          type: "scatter",
+          symbolSize: 7,
+          itemStyle: { opacity: 0.65 },
+          data: spec.rows.map((r) => ({
+            id: r.id,
+            name: String(r.name),
+            value: [Number(r.age), Number(r.value)],
+          })),
+        },
+      ];
+    }
     chart.setOption(option);
-    if (onSelect) chart.on("click", (p) => onSelect(p.name));
+    if (onSelect)
+      chart.on("click", (p) => onSelect(String((p.data as Row)?.id || p.name)));
     const observer = new ResizeObserver(() => chart.resize());
     observer.observe(ref.current);
     return () => {
