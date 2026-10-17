@@ -9,6 +9,36 @@ screens share a responsive design system and real backend services.
 The local demonstration uses **Northstar Cloud**, a deterministic synthetic B2B
 company. Its results are demonstration evidence, not actual company performance.
 
+Built and maintained by [Victor Okeke](https://victorokeke.co.uk/).
+
+## Problem and architecture
+
+Revenue teams need consistent definitions across pipeline, invoicing, collections
+and recurring revenue before they can decide what action to take. RevPilot
+connects those analytical views to evidence-linked investigations and explicit
+approval workflows.
+
+Validated imports and deterministic demonstration records → PostgreSQL 18 →
+SQL/dbt analytical views and registered Python models → FastAPI → Next.js.
+Analytical tools support the AI analyst; exact-payload proposals connect approved
+actions to Temporal workflows.
+
+## Engineering decisions
+
+| Decision | Purpose | Implementation |
+|---|---|---|
+| Calculate metrics on the server | Keep reporting definitions consistent across screens | PostgreSQL facts and API analytics provide the shared calculation path |
+| Scope data access by organisation | Separate tenant records at the database boundary | Transaction-local organisation context, forced row-level security and membership checks |
+| Bound model access to analytical tools | Make numerical claims traceable and limit execution scope | Validated tools, persisted evidence IDs and bounded provider rounds rather than arbitrary SQL |
+| Persist investigation state | Make provider capacity and transport failures recoverable | Stored run outcomes, retry windows and bounded request handling |
+| Approve exact action payloads | Connect approval to the action actually executed | Payload/version checks, replay rejection and durable Temporal execution |
+| Evaluate models in time order | Measure performance against later observations | Recorded backtests, registered artefacts and held-out benchmark results |
+
+Gemini is supported through server-side provider configuration. Provider keys
+remain outside the frontend. Unconfigured, rate-limited and unavailable providers
+have explicit response states; an unavailable answer is not replaced with a
+manufactured analytical result.
+
 ## Development
 
 Python 3.12+, Node.js 24, PostgreSQL 18 and Temporal are required. Docker Compose
@@ -50,8 +80,9 @@ the bootstrap writes them only to ignored `.env`. Never commit runtime data.
 - Reports: persisted analytical snapshots with actual CSV and PDF downloads.
 - Operations: real ingestion, import, quality and model-training records.
 
-LLM and external provider credentials are optional. Unconfigured services show
-explicit states. No fake AI answers or external delivery confirmations are used.
+LLM and external provider credentials are optional for exploring the core
+workspace. Internal approval flows and external delivery are separate boundaries;
+an approved proposal is not evidence that an external message was delivered.
 
 ## Verification
 
@@ -63,7 +94,20 @@ npm run build
 npm run typecheck
 ```
 
-[Interface specification](docs/interface-specification.md) defines the design
-gate. [Frontend verification](docs/frontend-verification.md) records actual
-browser checks and screenshots at 1440, 768 and 390 pixels. The full master brief
-remains the acceptance target; the status document identifies unfinished work.
+[Frontend verification](docs/frontend-verification.md) records browser checks
+and screenshots at 1440, 768 and 390 pixels. The
+[interface specification](docs/interface-specification.md) documents navigation,
+component states and responsive behaviour.
+
+## Deployment scope and next stage
+
+RevPilot is an implemented local workspace under active development. Its
+demonstration data, provider-backed investigations and internal workflow
+execution are separate from a production commercial integration.
+
+The next stage covers browser OIDC login, complete canonical connector sync,
+additional automation adapters, live model scoring and production operational
+controls. Hosted deployment depends on validating those boundaries and suitable
+persistent API, database and Temporal infrastructure. See
+[architecture](docs/architecture.md), [deployment](docs/deployment.md) and the
+[implementation record](docs/implementation-status.md) for the verified scope.
